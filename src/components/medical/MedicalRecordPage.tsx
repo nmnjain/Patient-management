@@ -73,8 +73,9 @@ export default function MedicalRecordPage() {
         throw new Error('Failed to delete record from database');
       }
 
+      setRecords((prevRecords) => prevRecords.filter(record => record.id !== recordId));
+
       alert('Record deleted successfully');
-      window.location.reload(); // Refresh the page to update the UI
     } catch (error) {
       console.error('Error in handleDelete:', error);
       alert('Failed to delete record. Please try again.');
