@@ -21,7 +21,8 @@ export function useStorage() {
 
       // Use custom filename if provided, otherwise generate a unique one
       const fileName = metadata.custom_file_name || `${uuidv4()}.${file.name.split('.').pop()}`;
-      const filePath = `medical-records/${patientId}/${fileName}`;
+      // const filePath = `medical-records/${patientId}/${fileName}`;
+      const filePath = `${patientId}/${fileName}`;
 
       // Upload file to Supabase storage
       const { error: uploadError } = await supabase.storage

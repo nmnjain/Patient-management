@@ -4,6 +4,11 @@ import Sidebar from '../layout/Sidebar';
 import MedicalRecordsList from '../medical/MedicalRecordsList';
 import QRScanner from '../medical/QRScanner';
 import DoctorProfileCard from '../profile/DoctorProfileCard';
+import PatientAccessSection from '../medical/PatientAccessSection';
+
+
+
+
 
 export default function DoctorDashboard() {
   const { user } = useAuth();
@@ -20,7 +25,7 @@ export default function DoctorDashboard() {
             <div className="py-4">
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
                 <DoctorProfileCard />
-                <QRScanner />
+                <PatientAccessSection />
               </div>
               {/* <div className="mt-4">
                 <MedicalRecordsList />
