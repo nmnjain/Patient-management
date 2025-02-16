@@ -21,7 +21,9 @@ export function useStorage() {
 
       // Use custom filename if provided, otherwise generate a unique one
       const fileName = metadata.custom_file_name || `${uuidv4()}.${file.name.split('.').pop()}`;
-      const filePath = `${patientId}/${fileName}`; 
+      
+      // Simplified path structure
+      const filePath = `${patientId}/${fileName}`;
 
       // Upload file to Supabase storage
       const { error: uploadError } = await supabase.storage
@@ -30,10 +32,12 @@ export function useStorage() {
 
       if (uploadError) throw uploadError;
 
-      // Get the public URL
-      const { data: { publicUrl } } = supabase.storage
+      // Get initial signed URL for immediate use
+      const { data: { signedUrl }, error: signedUrlError } = await supabase.storage
         .from('medical-records')
-        .getPublicUrl(filePath);
+        .createSignedUrl(filePath, 3600); // 1 hour expiry
+
+      if (signedUrlError) throw signedUrlError;
 
       // Create a record in the medical_records table
       const { error: dbError } = await supabase
@@ -41,9 +45,10 @@ export function useStorage() {
         .insert({
           patient_id: patientId,
           file_name: fileName,
-          file_url: publicUrl,
+          file_path: filePath,
+          file_url: signedUrl, // Keep for backward compatibility
           file_type: file.type,
-          file_size: Math.round(file.size / 1024), // Convert to KB
+          file_size: Math.round(file.size / 1024),
           description: metadata.description,
           uploaded_by: metadata.uploaded_by
         });

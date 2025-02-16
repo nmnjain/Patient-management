@@ -1,6 +1,7 @@
 // components/medical/PatientAccess.tsx
 import React, { useState } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { useSignedUrl } from '../../hooks/useSignedUrl';
 import { supabase } from '../../lib/supabase';
 
 interface Patient {
@@ -14,13 +15,15 @@ interface Patient {
 interface MedicalRecord {
     id: string;
     file_name: string;
-    file_url: string;
+    file_path: string;
+    file_url?: string;
     created_at: string;
     description: string;
 }
 
 export default function PatientAccess() {
     const { user } = useAuth();
+    const { getSignedUrl } = useSignedUrl();
     const [healthId, setHealthId] = useState('');
     const [loading, setLoading] = useState(false);
     const [patient, setPatient] = useState<Patient | null>(null);
@@ -66,7 +69,7 @@ export default function PatientAccess() {
             // 3. Fetch medical records
             const { data: recordsData } = await supabase
                 .from('medical_records')
-                .select('id, file_name, file_url, created_at, description')
+                .select('id, file_name, file_path, created_at, description')
                 .eq('patient_id', patientData.id)
                 .order('created_at', { ascending: false });
 
@@ -78,6 +81,16 @@ export default function PatientAccess() {
             console.error('Access error:', err);
         } finally {
             setLoading(false);
+        }
+    };
+
+    const handleViewFile = async (record: MedicalRecord) => {
+        try {
+            const signedUrl = await getSignedUrl(record.file_path);
+            window.open(signedUrl, '_blank');
+        } catch (err) {
+            console.error('Error viewing file:', err);
+            setError('Error accessing file');
         }
     };
 
@@ -96,8 +109,8 @@ export default function PatientAccess() {
                     placeholder="Enter Health ID"
                     className="flex-1 p-2 border border-gray-300 rounded"
                 />
-                <button 
-                    type="submit" 
+                <button
+                    type="submit"
                     disabled={loading}
                     className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition"
                 >
@@ -150,8 +163,8 @@ export default function PatientAccess() {
                                                 {new Date(record.created_at).toLocaleDateString()}
                                             </p>
                                         </div>
-                                        <button 
-                                            onClick={() => window.open(record.file_url, '_blank')}
+                                        <button
+                                            onClick={() => handleViewFile(record)}
                                             className="border border-gray-300 px-4 py-2 rounded hover:bg-gray-100 transition"
                                         >
                                             View
