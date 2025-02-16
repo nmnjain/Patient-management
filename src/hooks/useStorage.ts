@@ -1,12 +1,20 @@
 import { supabase } from '../lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 
+interface UploadMetadata {
+  description: string;
+  uploaded_by: 'patient' | 'doctor';
+  doctor_name?: string;
+  doctor_id?: string;
+  custom_file_name?: string;
+}
+
 export function useStorage() {
   const uploadFile = async (
     file: File, 
     patientId: string, 
-    metadata: { description: string; uploaded_by: 'patient' | 'doctor'; custom_file_name?: string }
-  ) => {
+    metadata: UploadMetadata
+) => {
     try {
       // Check if profile exists
       const { data: profile, error: profileError } = await supabase
@@ -43,14 +51,16 @@ export function useStorage() {
       const { error: dbError } = await supabase
         .from('medical_records')
         .insert({
-          patient_id: patientId,
-          file_name: fileName,
-          file_path: filePath,
-          file_url: signedUrl, // Keep for backward compatibility
-          file_type: file.type,
-          file_size: Math.round(file.size / 1024),
-          description: metadata.description,
-          uploaded_by: metadata.uploaded_by
+            patient_id: patientId,
+            doctor_id: metadata.doctor_id,
+            doctor_name: metadata.doctor_name,
+            file_name: fileName,
+            file_path: filePath,
+            file_url: signedUrl,
+            file_type: file.type,
+            file_size: Math.round(file.size / 1024),
+            description: metadata.description,
+            uploaded_by: metadata.uploaded_by
         });
 
       if (dbError) throw dbError;
