@@ -44,7 +44,7 @@ export default function Sidebar() {
         <div className="p-4 overflow-y-auto h-full">
           <div className="flex items-center space-x-2 mb-6 pt-2 lg:pt-0">
             <Heart className="h-8 w-8 text-indigo-600" />
-            <span className="text-2xl font-bold text-gray-900">HealthCare</span>
+            <span className="text-2xl font-bold text-gray-900">HealthSync</span>
           </div>
           
           <nav className="space-y-1">

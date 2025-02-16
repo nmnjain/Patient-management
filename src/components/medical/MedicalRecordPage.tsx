@@ -4,12 +4,13 @@ import { supabase } from '../../lib/supabase';
 import { Trash2, Eye, FileText } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from '../layout/Sidebar';
+import { useSignedUrl } from '../../hooks/useSignedUrl';
 
 interface MedicalRecord {
   id: string;
   patient_id: string;
   file_name: string;
-  file_url: string;
+  file_path: string;
   created_at: string;
   description?: string;
   uploaded_by: 'patient' | 'doctor';
@@ -20,6 +21,7 @@ export default function MedicalRecordPage() {
   const navigate = useNavigate();
   const [records, setRecords] = useState<MedicalRecord[]>([]);
   const [pageLoading, setPageLoading] = useState(true);
+  const { getSignedUrl, loading: urlLoading } = useSignedUrl();
 
   useEffect(() => {
     if (loading) return;
@@ -37,7 +39,7 @@ export default function MedicalRecordPage() {
             id,
             patient_id,
             file_name,
-            file_url,
+            file_path,
             created_at,
             description,
             uploaded_by
@@ -79,6 +81,16 @@ export default function MedicalRecordPage() {
     } catch (error) {
       console.error('Error in handleDelete:', error);
       alert('Failed to delete record. Please try again.');
+    }
+  };
+
+  const handleViewFile = async (record: MedicalRecord) => {
+    try {
+      const signedUrl = await getSignedUrl(record.file_path);
+      window.open(signedUrl, '_blank');
+    } catch (error) {
+      console.error('Error viewing file:', error);
+      alert('Failed to access file. Please try again.');
     }
   };
 
@@ -135,17 +147,17 @@ export default function MedicalRecordPage() {
                     </div>
 
                     <div className="flex items-center gap-2">
-                      <a
-                        href={record.file_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
+                      <button
+                        onClick={() => handleViewFile(record)}
+                        disabled={urlLoading}
                         className="inline-flex items-center px-3 py-1.5 text-sm font-medium 
                           text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 
-                          transition-colors duration-200"
+                          transition-colors duration-200 disabled:opacity-50
+                          disabled:cursor-not-allowed"
                       >
                         <Eye className="w-4 h-4 mr-1.5" />
-                        View
-                      </a>
+                        {urlLoading ? 'Loading...' : 'View'}
+                      </button>
 
                       {record.uploaded_by === 'patient' && (
                         <button

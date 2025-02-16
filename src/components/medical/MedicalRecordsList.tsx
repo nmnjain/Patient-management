@@ -1,14 +1,14 @@
 import React from 'react';
-import { Eye } from 'lucide-react';
+import { Eye, Trash2, FileText, User, Calendar } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
+import { useSignedUrl } from '../../hooks/useSignedUrl';
 
-// Define the props interface
 interface MedicalRecord {
   id: string;
   patient_id: string;
   doctor_id?: string;
   file_name: string;
-  file_url: string;
+  file_path: string;
   file_type: string;
   file_size: number;
   created_at: string;
@@ -19,10 +19,12 @@ interface MedicalRecord {
 
 interface Props {
   records: MedicalRecord[];
-  onRecordDeleted: () => void;
+  onRecordDeleted?: () => void;
 }
 
-export default function MedicalRecordsList({ records }: { records: MedicalRecord[] }) {
+export default function MedicalRecordsList({ records, onRecordDeleted }: Props) {
+  const { getSignedUrl, loading } = useSignedUrl();
+
   const handleDelete = async (record: MedicalRecord) => {
     try {
       if (record.uploaded_by !== 'patient') {
@@ -39,69 +41,24 @@ export default function MedicalRecordsList({ records }: { records: MedicalRecord
         .delete()
         .eq('id', record.id);
 
-      if (dbError) {
-        console.error('Database deletion error:', dbError);
-        throw new Error('Failed to delete record from database');
-      }
+      if (dbError) throw dbError;
 
+      onRecordDeleted?.();
       alert('Record deleted successfully');
-      window.location.reload(); // Refresh the page to update the UI
     } catch (error) {
       console.error('Error in handleDelete:', error);
-      
-      // Check if the record was actually deleted despite the error
-      const { data: checkRecord } = await supabase
-        .from('medical_records')
-        .select('id')
-        .eq('id', record.id)
-        .single();
-
-      if (!checkRecord) {
-        // Record was deleted successfully despite the error
-        alert('Record deleted successfully');
-        window.location.reload(); // Refresh the page to update the UI
-      } else {
-        alert('Failed to delete record. Please try again.');
-      }
+      alert('Failed to delete record. Please try again.');
     }
   };
 
-  const handleDownload = async (fileUrl: string, fileName: string) => {
+  const handleViewFile = async (record: MedicalRecord) => {
     try {
-      // Extract the file path from the full URL
-      // Example URL: https://...supabase.co/storage/v1/object/public/medical_records/path/to/file.pdf
-      const pathRegex = /\/storage\/v1\/object\/public\/medical_records\/(.*)/;
-      const match = fileUrl.match(pathRegex);
-      
-      if (!match || !match[1]) {
-        throw new Error('Invalid file URL format');
-      }
-
-      const filePath = match[1];
-      
-      // Download file using Supabase
-      const { data, error } = await supabase
-        .storage
-        .from('medical_records')
-        .download(filePath);
-
-      if (error) {
-        throw error;
-      }
-
-      // Create and trigger download
-      const blob = new Blob([data]);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+      // Get a fresh signed URL each time the file is viewed
+      const signedUrl = await getSignedUrl(record.file_path);
+      window.open(signedUrl, '_blank');
     } catch (error) {
-      console.error('Download error:', error);
-      alert('Failed to download file. Please try again.');
+      console.error('Error viewing file:', error);
+      alert('Failed to access file. Please try again.');
     }
   };
 
@@ -115,35 +72,56 @@ export default function MedicalRecordsList({ records }: { records: MedicalRecord
         >
           <div className="flex flex-col md:flex-row md:items-center gap-3">
             <div className="flex-1">
-              <div className="flex items-start md:items-center flex-col md:flex-row md:gap-4">
-                <h4 className="text-sm md:text-base font-medium text-gray-900">
-                  {record.file_name}
-                </h4>
-                <span className="text-xs text-gray-500">
-                  {new Date(record.created_at).toLocaleDateString()}
-                </span>
+              <div className="flex items-start">
+                <FileText className="h-5 w-5 text-indigo-600 mt-1 flex-shrink-0" />
+                <div className="ml-3">
+                  <h4 className="text-sm font-medium text-gray-900">
+                    {record.file_name}
+                  </h4>
+                  {record.description && (
+                    <p className="text-sm text-gray-500 mt-1">
+                      {record.description}
+                    </p>
+                  )}
+                  <div className="flex items-center mt-2 space-x-4">
+                    <div className="flex items-center text-sm text-gray-500">
+                      <Calendar className="h-4 w-4 mr-1" />
+                      {new Date(record.created_at).toLocaleDateString()}
+                    </div>
+                    {record.doctor_name && (
+                      <div className="flex items-center text-sm text-gray-500">
+                        <User className="h-4 w-4 mr-1" />
+                        {record.doctor_name}
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
-              
-              {record.description && (
-                <p className="text-sm text-gray-600 mt-1">
-                  {record.description}
-                </p>
-              )}
             </div>
 
-            <div className="flex items-center gap-2 mt-2 md:mt-0">
-              {record.file_url && (
-                <a
-                  href={record.file_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleViewFile(record)}
+                disabled={loading}
+                className="inline-flex items-center px-3 py-1.5 text-sm font-medium 
+                  text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 
+                  transition-colors duration-200 disabled:opacity-50 
+                  disabled:cursor-not-allowed"
+              >
+                <Eye className="w-4 h-4 mr-1.5" />
+                {loading ? 'Loading...' : 'View'}
+              </button>
+
+              {record.uploaded_by === 'patient' && (
+                <button
+                  onClick={() => handleDelete(record)}
                   className="inline-flex items-center px-3 py-1.5 text-sm font-medium 
-                    text-gray-600 bg-gray-50 rounded-lg hover:bg-gray-100 
+                    text-red-600 bg-red-50 rounded-lg hover:bg-red-100 
                     transition-colors duration-200"
                 >
-                  <Eye className="w-4 h-4 mr-1.5" />
-                  View
-                </a>
+                  <Trash2 className="w-4 h-4 mr-1.5" />
+                  Delete
+                </button>
               )}
             </div>
           </div>

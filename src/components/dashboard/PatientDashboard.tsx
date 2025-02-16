@@ -15,6 +15,7 @@ interface MedicalRecord {
   doctor_id?: string;
   file_name: string;
   file_url: string;
+  file_path: string; // Added this to work with new signed URLs
   file_type: string;
   file_size: number;
   created_at: string;
@@ -48,6 +49,7 @@ export default function PatientDashboard() {
           doctor_id,
           file_name,
           file_url,
+          file_path,
           file_type,
           file_size,
           created_at,
@@ -59,13 +61,32 @@ export default function PatientDashboard() {
         .order('created_at', { ascending: false })
         .limit(5);
 
-      if (error) return;
+      if (error) {
+        console.error('Error fetching records:', error);
+        return;
+      }
 
       if (data) {
-        setMedicalRecords(data);
+        // Make sure each record has a file_path
+        const processedData = data.map(record => ({
+          ...record,
+          file_path: record.file_path || extractPathFromUrl(record.file_url)
+        }));
+        setMedicalRecords(processedData);
       }
     } catch (error) {
-      // Handle error silently or show user-friendly message
+      console.error('Error in fetchMedicalRecords:', error);
+    }
+  };
+
+  // Helper function to extract path from URL if needed
+  const extractPathFromUrl = (url: string) => {
+    try {
+      const pathMatch = url.match(/\/storage\/v1\/object\/public\/medical_records\/(.*)/);
+      return pathMatch ? pathMatch[1] : url;
+    } catch (error) {
+      console.error('Error extracting path:', error);
+      return url;
     }
   };
 
@@ -75,32 +96,32 @@ export default function PatientDashboard() {
 
   const handleFileUpload = async () => {
     if (!selectedFile || !user) return;
-    
+
     try {
       setIsUploading(true);
       setUploadError(null);
-      
+
       const formattedDate = selectedDate.replace(/-/g, '/');
       const finalFileName = `${customFileName}_${formattedDate}${selectedFile.name.substring(selectedFile.name.lastIndexOf('.'))}`;
-      
+
       await uploadFile(selectedFile, user.id, {
         description: description,
         uploaded_by: 'patient',
         custom_file_name: finalFileName
       });
-      
+
       setSelectedFile(null);
       setDescription('');
       setCustomFileName('');
       setSelectedDate(new Date().toISOString().split('T')[0]);
-      
+
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
       if (fileInput) {
         fileInput.value = '';
       }
-      
+
       await fetchMedicalRecords();
-      
+
     } catch (error) {
       setUploadError('Failed to upload file. Please try again.');
       console.error('Upload error:', error);
@@ -108,6 +129,11 @@ export default function PatientDashboard() {
       setIsUploading(false);
     }
   };
+
+  const handleRecordDeleted = () => {
+    fetchMedicalRecords();
+  };
+
 
   return (
     <div className="flex flex-col md:flex-row min-h-screen bg-gray-50">
@@ -124,11 +150,11 @@ export default function PatientDashboard() {
             <div className="flex items-center space-x-2 md:space-x-4">
               <Calendar className="h-5 w-5 md:h-6 md:w-6 text-indigo-600" />
               <span className="text-sm md:text-lg text-gray-700">
-                {new Date().toLocaleDateString('en-US', { 
-                  weekday: 'long', 
-                  year: 'numeric', 
-                  month: 'long', 
-                  day: 'numeric' 
+                {new Date().toLocaleDateString('en-US', {
+                  weekday: 'long',
+                  year: 'numeric',
+                  month: 'long',
+                  day: 'numeric'
                 })}
               </span>
             </div>
@@ -144,7 +170,7 @@ export default function PatientDashboard() {
               <FileText className="mr-2 md:mr-3 h-6 w-6 md:h-7 md:w-7 text-indigo-600" />
               Upload Medical Record
             </h2>
-            
+
             <div className="grid grid-cols-1 gap-4 md:gap-6">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1 md:mb-2">
@@ -225,15 +251,18 @@ export default function PatientDashboard() {
                 <button
                   onClick={() => navigate('/medical-records')}
                   className="flex items-center px-3 py-1.5 text-sm font-medium text-indigo-600 
-                    hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors duration-200"
+                  hover:text-indigo-700 hover:bg-indigo-50 rounded-lg transition-colors duration-200"
                 >
                   View All
                   <ChevronRight className="h-4 w-4 ml-1" />
                 </button>
               </div>
-              
+
               {medicalRecords.length > 0 ? (
-                <MedicalRecordsList records={medicalRecords} />
+                <MedicalRecordsList
+                  records={medicalRecords}
+                  onRecordDeleted={handleRecordDeleted}
+                />
               ) : (
                 <div className="text-center py-8 md:py-12">
                   <FileText className="h-10 w-10 md:h-12 md:w-12 text-gray-300 mx-auto mb-3 md:mb-4" />
@@ -242,7 +271,7 @@ export default function PatientDashboard() {
               )}
             </div>
           </div>
-        </div>
+          </div>
       </main>
     </div>
   );
