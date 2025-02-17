@@ -8,6 +8,8 @@ import QRCodeGenerator from '../medical/QRCodeGenerator';
 import { useStorage } from '../../hooks/useStorage';
 import { FileText, Upload, AlertCircle, ChevronRight, Calendar } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import MedicalChatbot from '../medical/MedicalChatbot';
+
 
 interface MedicalRecord {
   id: string;
@@ -15,7 +17,7 @@ interface MedicalRecord {
   doctor_id?: string;
   file_name: string;
   file_url: string;
-  file_path: string; // Added this to work with new signed URLs
+  file_path: string; 
   file_type: string;
   file_size: number;
   created_at: string;
@@ -273,6 +275,10 @@ export default function PatientDashboard() {
           </div>
           </div>
       </main>
+
+      <MedicalChatbot />
+
+      
     </div>
   );
 }
