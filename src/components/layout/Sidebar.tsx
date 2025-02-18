@@ -12,7 +12,7 @@ import {
 
 export default function Sidebar() {
   const navigate = useNavigate();
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const handleLogout = async () => {
@@ -22,6 +22,10 @@ export default function Sidebar() {
     } catch (error) {
       console.error('Error logging out:', error);
     }
+  };
+
+  const getProfileLink = () => {
+    return user?.role === 'doctor' ? '/doctor/profile' : '/profile';
   };
 
   return (
@@ -56,16 +60,26 @@ export default function Sidebar() {
               <span>Dashboard</span>
             </Link>
             
-            <Link 
-              to="/medical-records" 
-              className="flex items-center space-x-2 px-4 py-2.5 rounded-lg transition-all duration-200 hover:bg-[#34495E] hover:text-white"
-            >
-              <FileText className="h-5 w-5" />
-              <span>Medical Records</span>
-            </Link>
+            {user?.role === 'doctor' ? (
+              <Link 
+                to="/doctor/patients" 
+                className="flex items-center space-x-2 px-4 py-2.5 rounded-lg transition-all duration-200 hover:bg-[#34495E] hover:text-white"
+              >
+                <FileText className="h-5 w-5" />
+                <span>Patient Records</span>
+              </Link>
+            ) : (
+              <Link 
+                to="/medical-records" 
+                className="flex items-center space-x-2 px-4 py-2.5 rounded-lg transition-all duration-200 hover:bg-[#34495E] hover:text-white"
+              >
+                <FileText className="h-5 w-5" />
+                <span>Medical Records</span>
+              </Link>
+            )}
             
             <Link 
-              to="/profile" 
+              to={getProfileLink()} 
               className="flex items-center space-x-2 px-4 py-2.5 rounded-lg transition-all duration-200 hover:bg-[#34495E] hover:text-white"
             >
               <UserCircle className="h-5 w-5" />
