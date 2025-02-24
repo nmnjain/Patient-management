@@ -2,23 +2,31 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { useAccessToken } from '../../hooks/useAccessToken';
 import { useSignedUrl } from '../../hooks/useSignedUrl';
-import { Clock, Search, UserX, ChevronDown, ChevronUp, File } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Clock, Search, UserX, ExternalLink, User } from 'lucide-react';
 import { supabase } from '../../lib/supabase';
 
+interface Patient {
+    id: string;
+    patient_id: string;
+    name: string;
+    health_id: string;
+    remainingTime: {
+        hours: number;
+        minutes: number;
+        isExpired: boolean;
+    };
+}
 
 const RecentPatientsAccess = () => {
     const { user } = useAuth();
     const { getActiveTokens, revokeAccessToken } = useAccessToken();
     const { getSignedUrl } = useSignedUrl();
-    const [activePatients, setActivePatients] = useState([]);
+    const navigate = useNavigate();
+    const [activePatients, setActivePatients] = useState<Patient[]>([]);
     const [loading, setLoading] = useState(true);
-    const [expandedPatient, setExpandedPatient] = useState(null);
-    const [patientRecords, setPatientRecords] = useState({});
-    const [loadingRecords, setLoadingRecords] = useState(false);
 
-
-
-    const calculateRemainingTime = (expiresAt) => {
+    const calculateRemainingTime = (expiresAt: string) => {
         const now = new Date();
         const expiry = new Date(expiresAt);
         expiry.setHours(expiry.getHours() + 5);
@@ -32,73 +40,55 @@ const RecentPatientsAccess = () => {
 
     const fetchActivePatients = async () => {
         if (!user?.id) return;
-        const tokens = await getActiveTokens(user.id);
-        const patientsWithTime = tokens.map(token => ({
-            ...token,
-            ...token.profiles,
-            remainingTime: calculateRemainingTime(token.expires_at)
-        }));
-        setActivePatients(patientsWithTime.filter(p => !p.remainingTime.isExpired));
-        setLoading(false);
-    };
-
-    const fetchPatientRecords = async (patientId) => {
-        if (patientRecords[patientId]) {
-            return;
-        }
-
-        setLoadingRecords(true);
+        
         try {
-            const { data: records, error } = await supabase
-                .from('medical_records')
-                .select('*')
-                .eq('patient_id', patientId)
-                .order('created_at', { ascending: false });
-
-            if (error) throw error;
-
-            setPatientRecords(prev => ({
-                ...prev,
-                [patientId]: records || []
+            const tokens = await getActiveTokens(user.id);
+            const patientsWithTime = tokens.map(token => ({
+                ...token,
+                ...token.profiles,
+                remainingTime: calculateRemainingTime(token.expires_at)
             }));
-        } catch (err) {
-            console.error('Error fetching records:', err);
+            setActivePatients(patientsWithTime.filter(p => !p.remainingTime.isExpired));
+        } catch (error) {
+            console.error("Error fetching active patients:", error);
         } finally {
-            setLoadingRecords(false);
-        }
-    };
-
-    const handleViewFile = async (record) => {
-        try {
-            const signedUrl = await getSignedUrl(record.file_path);
-            window.open(signedUrl, '_blank');
-        } catch (err) {
-            console.error('Error viewing file:', err);
+            setLoading(false);
         }
     };
 
     useEffect(() => {
         fetchActivePatients();
+        
+        const subscription = supabase
+            .channel('access_tokens_changes')
+            .on('postgres_changes', { 
+                event: '*', 
+                schema: 'public', 
+                table: 'access_tokens',
+                filter: `doctor_id=eq.${user?.id}` 
+            }, () => {
+                fetchActivePatients();
+            })
+            .subscribe();
+            
         const interval = setInterval(fetchActivePatients, 60000);
-        return () => clearInterval(interval);
+        
+        return () => {
+            subscription.unsubscribe();
+            clearInterval(interval);
+        };
     }, [user?.id]);
 
-    const handlePatientClick = async (patientId) => {
-        if (expandedPatient === patientId) {
-            setExpandedPatient(null);
-        } else {
-            setExpandedPatient(patientId);
-            await fetchPatientRecords(patientId);
-        }
+    const handleViewProfile = (patientId: string) => {
+        navigate(`/doctor/patient/${patientId}`);
     };
 
-    const handleRevokeAccess = async (tokenId) => {
+    const handleRevokeAccess = async (tokenId: string) => {
         try {
             await revokeAccessToken(tokenId);
             setActivePatients(prevPatients => 
                 prevPatients.filter(patient => patient.id !== tokenId)
             );
-            setExpandedPatient(null);
         } catch (error) {
             console.error('Error revoking access:', error);
         }
@@ -115,7 +105,9 @@ const RecentPatientsAccess = () => {
 
             <div className="space-y-4">
                 {loading ? (
-                    <div className="text-center py-4">Loading...</div>
+                    <div className="flex justify-center py-4">
+                        <div className="animate-spin rounded-full h-6 w-6 border-t-2 border-b-2 border-blue-500"></div>
+                    </div>
                 ) : activePatients.length === 0 ? (
                     <div className="text-center py-8 text-gray-500">
                         No active patient sessions
@@ -123,72 +115,38 @@ const RecentPatientsAccess = () => {
                 ) : (
                     <div className="space-y-3">
                         {activePatients.map((patient) => (
-                            <div key={patient.id} className="border border-gray-200 rounded-lg">
-                                <div
-                                    className="flex items-center justify-between p-4 bg-gray-50 rounded-t-lg hover:bg-gray-100 transition-colors cursor-pointer"
-                                    onClick={() => handlePatientClick(patient.patient_id)}
-                                >
-                                    <div>
-                                        <p className="font-medium text-gray-900">{patient.name}</p>
-                                        <p className="text-sm text-gray-500">ID: {patient.health_id}</p>
-                                        <div className="flex items-center text-sm text-gray-500 mt-1">
-                                            <Clock className="h-4 w-4 mr-1" />
-                                            Expires in: {patient.remainingTime.hours}h {patient.remainingTime.minutes}m
+                            <div key={patient.id} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                                <div className="flex items-center justify-between">
+                                    <div className="flex items-center">
+                                        <div className="bg-blue-100 rounded-full p-2 mr-3">
+                                            <User className="h-5 w-5 text-blue-600" />
+                                        </div>
+                                        <div>
+                                            <p className="font-medium text-gray-900">{patient.name}</p>
+                                            <p className="text-sm text-gray-500">ID: {patient.health_id}</p>
+                                            <div className="flex items-center text-sm text-gray-500 mt-1">
+                                                <Clock className="h-4 w-4 mr-1" />
+                                                Expires in: {patient.remainingTime.hours}h {patient.remainingTime.minutes}m
+                                            </div>
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <button
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                handleRevokeAccess(patient.id);
-                                            }}
+                                            onClick={() => handleViewProfile(patient.patient_id)}
+                                            className="p-2 text-blue-600 hover:text-blue-800 transition-colors rounded-full hover:bg-gray-100"
+                                            title="View Patient Profile"
+                                        >
+                                            <ExternalLink className="h-5 w-5" />
+                                        </button>
+                                        <button
+                                            onClick={() => handleRevokeAccess(patient.id)}
                                             className="p-2 text-gray-500 hover:text-red-500 transition-colors rounded-full hover:bg-gray-200"
                                             title="Revoke Access"
                                         >
                                             <UserX className="h-5 w-5" />
                                         </button>
-                                        {expandedPatient === patient.patient_id ?
-                                            <ChevronUp className="h-5 w-5 text-gray-500" /> :
-                                            <ChevronDown className="h-5 w-5 text-gray-500" />
-                                        }
                                     </div>
                                 </div>
-
-                                {/* Records Dropdown */}
-                                {expandedPatient === patient.patient_id && (
-                                    <div className="p-4 border-t border-gray-200">
-                                        {loadingRecords ? (
-                                            <div className="text-center py-2">Loading records...</div>
-                                        ) : patientRecords[patient.patient_id]?.length > 0 ? (
-                                            <div className="space-y-2">
-                                                {patientRecords[patient.patient_id].map((record) => (
-                                                    <div
-                                                        key={record.id}
-                                                        className="flex items-center justify-between p-2 hover:bg-gray-50 rounded"
-                                                    >
-                                                        <div className="flex items-center gap-2">
-                                                            <File className="h-4 w-4 text-gray-500" />
-                                                            <div>
-                                                                <p className="text-sm font-medium">{record.file_name}</p>
-                                                                <p className="text-xs text-gray-500">
-                                                                    {new Date(record.created_at).toLocaleDateString()}
-                                                                </p>
-                                                            </div>
-                                                        </div>
-                                                        <button
-                                                            onClick={() => handleViewFile(record)}
-                                                            className="text-sm text-blue-600 hover:text-blue-800"
-                                                        >
-                                                            View
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        ) : (
-                                            <div className="text-center text-gray-500">No records found</div>
-                                        )}
-                                    </div>
-                                )}
                             </div>
                         ))}
                     </div>

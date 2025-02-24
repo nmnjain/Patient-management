@@ -1,8 +1,9 @@
+// pages/doctor/DoctorDashboard.tsx
 import React from 'react';
 import { useAuth } from '../../context/AuthContext';
-import Sidebar from '../layout/Sidebar';
-import DoctorProfileCard from '../profile/DoctorProfileCard';
-import PatientAccessSection from '../medical/PatientAccessSection';
+import Sidebar from '../../components/layout/Sidebar';
+import DoctorProfileCard from '../../components/profile/DoctorProfileCard';
+import PatientAccessSection from '../../components/medical/PatientAccessSection';
 import RecentPatientsAccess from './RecentPatientsAccess';
 
 export default function DoctorDashboard() {

@@ -11,7 +11,7 @@ import MedicalRecordsPage from './components/medical/MedicalRecordPage';
 import ProfilePage from './components/profile/ProfilePage';
 import { useAuth } from './context/AuthContext';
 import DoctorProfilePage from './components/profile/DoctorProfilePage';
-
+import PatientProfilePage from './pages/doctor/PatientProfilePage';
 function App() {
   return (
     <AuthProvider>
@@ -60,6 +60,9 @@ function App() {
               <RoleBasedRedirect />
             </ProtectedRoute>
           } />
+
+<Route path="/doctor/patient/:patientId" element={<PatientProfilePage />} />
+<Route path="/doctor/patient/:patientId" element={ <ProtectedRoute allowedRoles={['doctor']}> <PatientProfilePage /> </ProtectedRoute> } />
 
           {/* Catch-all route */}
           <Route path="*" element={<Navigate to="/" replace />} />
