@@ -32,10 +32,7 @@ class MedicalAIService {
 
   async processMedicalRecord(text: string, recordId: string, patientId: string): Promise<ProcessedMedicalData> {
     try {
-      // Check if the profile has a medical summary, if not create one
       await this.checkAndCreateInitialSummary(patientId);
-
-      // Extract date from the medical text if present
       const dateFromText = this.extractDateFromText(text);
       
       const prompt = `
@@ -61,22 +58,16 @@ class MedicalAIService {
 
       const result = await this.model.generateContent(prompt);
       let summary = result.response.text().trim();
-      
-      // Eliminate redundant phrases
       summary = summary.replace(/\bNo (other )?(significant )?findings\.?\s*$/i, '');
-      summary = summary.replace(/\.\s*$/, ''); // Remove trailing period
+      summary = summary.replace(/\.\s*$/, ''); 
       summary = summary.trim();
       
-      // If summary is empty after cleaning, create a minimal summary
       if (!summary) {
         summary = "Test performed with no clinically significant results";
       }
-
-      // Update database with processed information
       if (dateFromText) {
         await this.updateDatabase(summary, recordId, patientId, dateFromText);
       } else {
-        // If no date in text, don't include date in summary
         await this.updateDatabaseWithoutDate(summary, recordId, patientId);
       }
 
@@ -86,23 +77,19 @@ class MedicalAIService {
         patientId
       };
     } catch (error) {
-      console.error('Error processing medical record:', error);
       throw error;
     }
   }
 
   private extractDateFromText(text: string): string | null {
-    // Enhanced date patterns to catch more formats, particularly from medical reports
     const datePatterns = [
-      // Medical report standard formats (priority order)
-      /(?:REGISTERED|COLLECTED|REPORTED|DATE)[\s:]+(\d{1,2}[-/]\w{3}[-/]\d{4})/gi, // 23-Nov-2022
-      /(?:REGISTERED|COLLECTED|REPORTED|DATE)[\s:]+(\d{1,2}[-/]\d{1,2}[-/]\d{4})/gi, // DD-MM-YYYY
+      /(?:REGISTERED|COLLECTED|REPORTED|DATE)[\s:]+(\d{1,2}[-/]\w{3}[-/]\d{4})/gi, 
+      /(?:REGISTERED|COLLECTED|REPORTED|DATE)[\s:]+(\d{1,2}[-/]\d{1,2}[-/]\d{4})/gi, 
       
-      // General date formats as fallback
-      /\b(\d{1,2}[-/]\w{3}[-/]\d{4})\b/g, // DD-MMM-YYYY or DD/MMM/YYYY
-      /\b(\d{4}[-/]\d{1,2}[-/]\d{1,2})\b/g, // YYYY-MM-DD or YYYY/MM/DD
-      /\b(\d{1,2}[-/]\d{1,2}[-/]\d{4})\b/g, // MM-DD-YYYY or DD-MM-YYYY
-      /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b/g // Month DD, YYYY
+      /\b(\d{1,2}[-/]\w{3}[-/]\d{4})\b/g, 
+      /\b(\d{4}[-/]\d{1,2}[-/]\d{1,2})\b/g,
+      /\b(\d{1,2}[-/]\d{1,2}[-/]\d{4})\b/g, 
+      /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+\d{1,2},?\s+\d{4}\b/g 
     ];
 
     for (const pattern of datePatterns) {
@@ -110,14 +97,12 @@ class MedicalAIService {
       if (matches && matches.length > 0) {
         let dateText = '';
         
-        // If capture group exists, use it, otherwise use full match
         if (matches[0][1]) {
           dateText = matches[0][1];
         } else {
           dateText = matches[0][0];
         }
         
-        // Handle special format like "23-Nov-2022"
         if (/\d{1,2}[-/]\w{3}[-/]\d{4}/i.test(dateText)) {
           const parts = dateText.split(/[-/]/);
           const months = {
@@ -134,14 +119,12 @@ class MedicalAIService {
           }
         }
         
-        // Try standard date parsing
         try {
           const date = new Date(dateText);
           if (!isNaN(date.getTime())) {
             return date.toISOString().split('T')[0];
           }
         } catch (e) {
-          // If parsing fails, continue to the next match
           continue;
         }
       }
@@ -158,19 +141,16 @@ class MedicalAIService {
         .eq('id', patientId)
         .single();
 
-      // If there's no medical summary, create one from profile info
       if (!profileData?.medical_summary) {
         await this.createInitialSummary(patientId, profileData as unknown as ProfileData);
       }
     } catch (error) {
-      console.error('Error checking for initial summary:', error);
       throw error;
     }
   }
 
   private async createInitialSummary(patientId: string, profileData: ProfileData) {
     try {
-      // Prepare a prompt for the initial summary based on profile data
       const profileSummaryPrompt = `
         Create a concise 2-3 line medical summary paragraph based on the following patient information:
         
@@ -194,11 +174,9 @@ class MedicalAIService {
       const result = await this.model.generateContent(profileSummaryPrompt);
       const initialSummary = result.response.text().trim();
       
-      // Format with current date
       const dateStr = new Date().toISOString().split('T')[0];
       const formattedInitialSummary = `[${dateStr}] ${initialSummary}`;
       
-      // Update the profile with the initial summary
       const { error } = await supabase
         .from('profiles')
         .update({ medical_summary: formattedInitialSummary })
@@ -207,44 +185,35 @@ class MedicalAIService {
       if (error) throw error;
       
     } catch (error) {
-      console.error('Error creating initial summary:', error);
       throw error;
     }
   }
 
   private async updateDatabase(newSummary: string, recordId: string, patientId: string, dateStr: string) {
     try {
-      // Get existing summary
       const { data: profileData } = await supabase
         .from('profiles')
         .select('medical_summary')
         .eq('id', patientId)
         .single();
 
-      // Format the new summary with date
       const formattedNewSummary = `[${dateStr}] ${newSummary}`;
 
-      // Process existing summary
       let finalSummary = '';
       if (profileData?.medical_summary) {
-        // Split existing summary into entries by date markers
         const existingEntries = profileData.medical_summary
           .split(/\n(?=\[\d{4}-\d{2}-\d{2}\])/g)
           .filter(entry => entry.trim());
 
-        // Add new summary at the beginning
         existingEntries.unshift(formattedNewSummary);
 
-        // Keep only the last 10 entries
         const latestEntries = existingEntries.slice(0, 10);
 
-        // Join entries with two newlines between them
         finalSummary = latestEntries.join('\n\n');
       } else {
         finalSummary = formattedNewSummary;
       }
 
-      // Update using the database function
       await supabase.rpc('update_medical_summary', {
         p_patient_id: patientId,
         p_record_id: recordId,
@@ -252,44 +221,33 @@ class MedicalAIService {
       });
 
     } catch (error) {
-      console.error('Error updating database:', error);
       throw error;
     }
   }
 
   private async updateDatabaseWithoutDate(newSummary: string, recordId: string, patientId: string) {
     try {
-      // Get existing summary
       const { data: profileData } = await supabase
         .from('profiles')
         .select('medical_summary')
         .eq('id', patientId)
         .single();
-
-      // Format the new summary WITHOUT date
       const formattedNewSummary = newSummary;
 
-      // Process existing summary
       let finalSummary = '';
       if (profileData?.medical_summary) {
-        // Split existing summary into entries by date markers or new lines
         const existingEntries = profileData.medical_summary
           .split(/\n(?=\[\d{4}-\d{2}-\d{2}\]|\w)/g)
           .filter(entry => entry.trim());
 
-        // Add new summary at the beginning without date tag
         existingEntries.unshift(formattedNewSummary);
-
-        // Keep only the last 10 entries
         const latestEntries = existingEntries.slice(0, 10);
 
-        // Join entries with two newlines between them
         finalSummary = latestEntries.join('\n\n');
       } else {
         finalSummary = formattedNewSummary;
       }
 
-      // Update using the database function
       await supabase.rpc('update_medical_summary', {
         p_patient_id: patientId,
         p_record_id: recordId,
@@ -297,7 +255,6 @@ class MedicalAIService {
       });
 
     } catch (error) {
-      console.error('Error updating database:', error);
       throw error;
     }
   }

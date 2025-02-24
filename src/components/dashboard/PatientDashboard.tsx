@@ -38,6 +38,7 @@ export default function PatientDashboard() {
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const navigate = useNavigate();
   const [customFileName, setCustomFileName] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
@@ -68,12 +69,10 @@ export default function PatientDashboard() {
         .limit(5);
 
       if (error) {
-        console.error('Error fetching records:', error);
         return;
       }
 
       if (data) {
-        // Make sure each record has a file_path
         const processedData = data.map(record => ({
           ...record,
           file_path: record.file_path || extractPathFromUrl(record.file_url)
@@ -81,17 +80,14 @@ export default function PatientDashboard() {
         setMedicalRecords(processedData);
       }
     } catch (error) {
-      console.error('Error in fetchMedicalRecords:', error);
     }
   };
 
-  // Helper function to extract path from URL if needed
   const extractPathFromUrl = (url: string) => {
     try {
       const pathMatch = url.match(/\/storage\/v1\/object\/public\/medical_records\/(.*)/);
       return pathMatch ? pathMatch[1] : url;
     } catch (error) {
-      console.error('Error extracting path:', error);
       return url;
     }
   };
@@ -106,11 +102,17 @@ export default function PatientDashboard() {
     try {
       setIsUploading(true);
       setUploadError(null);
+      setUploadProgress(0);
   
       const formattedDate = selectedDate.replace(/-/g, '/');
       const finalFileName = `${customFileName}_${formattedDate}${selectedFile.name.substring(selectedFile.name.lastIndexOf('.'))}`;
+      
+      const progressInterval = setInterval(() => {
+        setUploadProgress(prev => {
+          return prev < 90 ? prev + 5 : prev;
+        });
+      }, 300);
   
-      // Upload file and get the record ID
       const uploadResult = await uploadFile(selectedFile, user.id, {
         description: description,
         uploaded_by: 'patient',
@@ -118,7 +120,6 @@ export default function PatientDashboard() {
         is_processed: false
       });
   
-      // If it's an image file, process with OCR and AI
       if (selectedFile.type.startsWith('image/')) {
         try {
           const extractedText = await extractTextFromImage(selectedFile);
@@ -126,30 +127,36 @@ export default function PatientDashboard() {
             await medicalAI.processMedicalRecord(extractedText, uploadResult.recordId, user.id);
           }
         } catch (ocrError) {
-          console.error('OCR/AI processing error:', ocrError);
-          // Continue with the upload even if OCR/AI processing fails
         }
       }
   
-      setSelectedFile(null);
-      setDescription('');
-      setCustomFileName('');
-      setSelectedDate(new Date().toISOString().split('T')[0]);
-  
-      const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
-      if (fileInput) {
-        fileInput.value = '';
-      }
-  
-      await fetchMedicalRecords();
+      setUploadProgress(100);
+      
+      clearInterval(progressInterval);
+      
+      setTimeout(() => {
+        setSelectedFile(null);
+        setDescription('');
+        setCustomFileName('');
+        setSelectedDate(new Date().toISOString().split('T')[0]);
+        setUploadProgress(0);
+        setIsUploading(false);
+        
+        const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
+        if (fileInput) {
+          fileInput.value = '';
+        }
+        
+        fetchMedicalRecords();
+      }, 500);
   
     } catch (error) {
-      console.error('Upload error:', error);
       setUploadError('Failed to upload or process file. Please try again.');
-    } finally {
+      setUploadProgress(0);
       setIsUploading(false);
     }
   };
+  
   const handleRecordDeleted = () => {
     fetchMedicalRecords();
   };
@@ -235,19 +242,15 @@ export default function PatientDashboard() {
                   type="file"
                   onChange={async (event) => {
                     const file = event.target.files?.[0];
-                    console.log('File selected:', file?.name);
-
                     setSelectedFile(file || null);
                     setExtractedText(''); // Reset extracted text
 
                     if (file && file.type.startsWith('image/')) {
                       try {
-                        console.log('Processing image file for OCR...');
                         const text = await extractTextFromImage(file);
-                        console.log('Extracted text:', text);
                         setExtractedText(text);
                       } catch (error) {
-                        console.error('OCR failed:', error);
+                        // Silent error handling
                       }
                     }
                   }}
@@ -256,6 +259,17 @@ export default function PatientDashboard() {
     file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-600 
     hover:file:bg-indigo-100 focus:outline-none"
                 />
+                
+                {/* Progress bar */}
+                {isUploading && (
+                  <div className="w-full bg-gray-200 rounded-full h-2.5 mb-2">
+                    <div 
+                      className="bg-indigo-600 h-2.5 rounded-full transition-all duration-300 ease-in-out" 
+                      style={{ width: `${uploadProgress}%` }}
+                    ></div>
+                  </div>
+                )}
+                
                 <button
                   onClick={handleFileUpload}
                   disabled={!selectedFile || isUploading}
@@ -265,11 +279,9 @@ export default function PatientDashboard() {
                     disabled:opacity-50 disabled:cursor-not-allowed transition-colors duration-200"
                 >
                   <Upload className="h-5 w-5 mr-2" />
-                  {isUploading ? 'Uploading...' : 'Upload'}
+                  {isUploading ? 'Processing...' : 'Upload'}
                 </button>
               </div>
-
-              
 
               {uploadError && (
                 <div className="flex items-center text-red-600 text-sm bg-red-50 p-3 rounded-lg">
@@ -314,7 +326,6 @@ export default function PatientDashboard() {
       </main>
 
       <MedicalChatbot />
-
 
     </div>
   );
