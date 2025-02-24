@@ -1,3 +1,4 @@
+// useStorage.ts
 import { supabase } from '../lib/supabase';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -7,6 +8,13 @@ interface UploadMetadata {
   doctor_name?: string;
   doctor_id?: string;
   custom_file_name?: string;
+  is_processed?: boolean;
+}
+
+interface UploadResult {
+  recordId: string;
+  filePath: string;
+  fileUrl: string;
 }
 
 export function useStorage() {
@@ -14,7 +22,7 @@ export function useStorage() {
     file: File, 
     patientId: string, 
     metadata: UploadMetadata
-) => {
+  ): Promise<UploadResult> => {
     try {
       // Check if profile exists
       const { data: profile, error: profileError } = await supabase
@@ -47,8 +55,8 @@ export function useStorage() {
 
       if (signedUrlError) throw signedUrlError;
 
-      // Create a record in the medical_records table
-      const { error: dbError } = await supabase
+      // Create a record in the medical_records table and return the id
+      const { data: recordData, error: dbError } = await supabase
         .from('medical_records')
         .insert({
             patient_id: patientId,
@@ -60,10 +68,21 @@ export function useStorage() {
             file_type: file.type,
             file_size: Math.round(file.size / 1024),
             description: metadata.description,
-            uploaded_by: metadata.uploaded_by
-        });
+            uploaded_by: metadata.uploaded_by,
+            is_processed: metadata.is_processed || false
+        })
+        .select('id')
+        .single();
 
       if (dbError) throw dbError;
+
+      if (!recordData) throw new Error('Failed to create medical record');
+
+      return {
+        recordId: recordData.id,
+        filePath: filePath,
+        fileUrl: signedUrl
+      };
 
     } catch (error) {
       console.error('Upload error:', error);

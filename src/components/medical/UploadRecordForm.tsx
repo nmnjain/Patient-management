@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { supabase } from '../../lib/supabase';
 import { Upload } from 'lucide-react';
+import { extractTextFromImage } from '../../lib/ocr';
 
 export default function UploadRecordForm() {
   const { user } = useAuth();
@@ -9,14 +10,40 @@ export default function UploadRecordForm() {
   const [description, setDescription] = useState('');
   const [uploading, setUploading] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [extractedText, setExtractedText] = useState<string>('');
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('1. File change event triggered');
+    
     if (e.target.files && e.target.files[0]) {
-      setFile(e.target.files[0]);
+      const selectedFile = e.target.files[0];
+      console.log('2. Selected file:', {
+        name: selectedFile.name,
+        type: selectedFile.type,
+        size: selectedFile.size
+      });
+      
+      setFile(selectedFile);
+
+      if (selectedFile.type.startsWith('image/')) {
+        console.log('3. File is an image, attempting OCR...');
+        try {
+          console.log('4. Starting text extraction...');
+          const text = await extractTextFromImage(selectedFile);
+          console.log('5. Extraction successful:', text);
+          setExtractedText(text);
+        } catch (error) {
+          console.error('6. OCR failed:', error);
+          alert('Failed to extract text from image');
+        }
+      } else {
+        console.log('3. File is not an image, skipping OCR');
+      }
     }
   };
 
   const handleUpload = async (e: React.FormEvent) => {
+    console.log('Upload started');
     e.preventDefault();
     if (!file || !user) return;
 
@@ -58,10 +85,10 @@ export default function UploadRecordForm() {
       setFile(null);
       setDescription('');
       setShowModal(false);
-      
+
       // Refresh the records list (you'll need to implement this)
       window.location.reload();
-      
+
     } catch (error) {
       console.error('Error uploading record:', error);
       alert('Failed to upload record');
@@ -92,6 +119,15 @@ export default function UploadRecordForm() {
                 ×
               </button>
             </div>
+
+            {extractedText && (
+              <div className="mt-4">
+                <h4 className="text-sm font-medium text-gray-700">Extracted Text:</h4>
+                <div className="mt-1 p-2 bg-gray-50 rounded-md">
+                  <pre className="text-xs">{extractedText}</pre>
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleUpload} className="space-y-4">
               <div>

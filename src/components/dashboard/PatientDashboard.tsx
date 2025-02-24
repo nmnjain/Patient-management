@@ -10,6 +10,9 @@ import { FileText, Upload, AlertCircle, ChevronRight, Calendar } from 'lucide-re
 import { useNavigate } from 'react-router-dom';
 import MedicalChatbot from '../medical/MedicalChatbot';
 
+import { extractTextFromImage } from '../../lib/ocr';
+
+import { medicalAI } from '../../services/medicalAIService';
 
 interface MedicalRecord {
   id: string;
@@ -17,7 +20,7 @@ interface MedicalRecord {
   doctor_id?: string;
   file_name: string;
   file_url: string;
-  file_path: string; 
+  file_path: string;
   file_type: string;
   file_size: number;
   created_at: string;
@@ -38,6 +41,7 @@ export default function PatientDashboard() {
   const navigate = useNavigate();
   const [customFileName, setCustomFileName] = useState('');
   const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  const [extractedText, setExtractedText] = useState<string>('');
 
   const fetchMedicalRecords = async () => {
     if (!user) return;
@@ -98,40 +102,54 @@ export default function PatientDashboard() {
 
   const handleFileUpload = async () => {
     if (!selectedFile || !user) return;
-
+  
     try {
       setIsUploading(true);
       setUploadError(null);
-
+  
       const formattedDate = selectedDate.replace(/-/g, '/');
       const finalFileName = `${customFileName}_${formattedDate}${selectedFile.name.substring(selectedFile.name.lastIndexOf('.'))}`;
-
-      await uploadFile(selectedFile, user.id, {
+  
+      // Upload file and get the record ID
+      const uploadResult = await uploadFile(selectedFile, user.id, {
         description: description,
         uploaded_by: 'patient',
-        custom_file_name: finalFileName
+        custom_file_name: finalFileName,
+        is_processed: false
       });
-
+  
+      // If it's an image file, process with OCR and AI
+      if (selectedFile.type.startsWith('image/')) {
+        try {
+          const extractedText = await extractTextFromImage(selectedFile);
+          if (extractedText) {
+            await medicalAI.processMedicalRecord(extractedText, uploadResult.recordId, user.id);
+          }
+        } catch (ocrError) {
+          console.error('OCR/AI processing error:', ocrError);
+          // Continue with the upload even if OCR/AI processing fails
+        }
+      }
+  
       setSelectedFile(null);
       setDescription('');
       setCustomFileName('');
       setSelectedDate(new Date().toISOString().split('T')[0]);
-
+  
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
       if (fileInput) {
         fileInput.value = '';
       }
-
+  
       await fetchMedicalRecords();
-
+  
     } catch (error) {
-      setUploadError('Failed to upload file. Please try again.');
       console.error('Upload error:', error);
+      setUploadError('Failed to upload or process file. Please try again.');
     } finally {
       setIsUploading(false);
     }
   };
-
   const handleRecordDeleted = () => {
     fetchMedicalRecords();
   };
@@ -215,11 +233,28 @@ export default function PatientDashboard() {
               <div className="flex flex-col gap-3">
                 <input
                   type="file"
-                  onChange={(event) => setSelectedFile(event.target.files?.[0] || null)}
+                  onChange={async (event) => {
+                    const file = event.target.files?.[0];
+                    console.log('File selected:', file?.name);
+
+                    setSelectedFile(file || null);
+                    setExtractedText(''); // Reset extracted text
+
+                    if (file && file.type.startsWith('image/')) {
+                      try {
+                        console.log('Processing image file for OCR...');
+                        const text = await extractTextFromImage(file);
+                        console.log('Extracted text:', text);
+                        setExtractedText(text);
+                      } catch (error) {
+                        console.error('OCR failed:', error);
+                      }
+                    }
+                  }}
                   className="w-full text-sm text-gray-500 
-                    file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 
-                    file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-600 
-                    hover:file:bg-indigo-100 focus:outline-none"
+    file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 
+    file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-600 
+    hover:file:bg-indigo-100 focus:outline-none"
                 />
                 <button
                   onClick={handleFileUpload}
@@ -233,6 +268,8 @@ export default function PatientDashboard() {
                   {isUploading ? 'Uploading...' : 'Upload'}
                 </button>
               </div>
+
+              
 
               {uploadError && (
                 <div className="flex items-center text-red-600 text-sm bg-red-50 p-3 rounded-lg">
@@ -273,12 +310,12 @@ export default function PatientDashboard() {
               )}
             </div>
           </div>
-          </div>
+        </div>
       </main>
 
       <MedicalChatbot />
 
-      
+
     </div>
   );
 }
